@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Subnet Split Calculator</title>
+    <link rel="manifest" href="manifest.json" />
+    <meta name="theme-color" content="#007bff" />
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        background: #f0f2f5;
+        margin: 0;
+        padding: 20px;
+      }
+      .container {
+        max-width: 800px;
+        margin: auto;
+        background: #fff;
+        padding: 25px;
+        border-radius: 10px;
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+      }
+      h2 {
+        text-align: center;
+      }
+      label {
+        display: block;
+        font-weight: bold;
+        margin-top: 15px;
+      }
+      input,
+      select {
+        width: 100%;
+        padding: 10px;
+        font-size: 16px;
+        border-radius: 6px;
+        border: 1px solid #ccc;
+        margin-top: 5px;
+      }
+      button {
+        margin-top: 15px;
+        width: 100%;
+        padding: 12px;
+        background: #007bff;
+        color: white;
+        border: none;
+        border-radius: 6px;
+        font-size: 16px;
+        cursor: pointer;
+      }
+      button:hover {
+        background: #0056b3;
+      }
+      #exportBtn {
+        background: #28a745;
+      }
+      table {
+        width: 100%;
+        margin-top: 25px;
+        border-collapse: collapse;
+        font-size: 14px;
+      }
+      th,
+      td {
+        padding: 8px;
+        border: 1px solid #ccc;
+        text-align: center;
+      }
+      th {
+        background-color: #f7f7f7;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h2>Subnet Split Calculator</h2>
+
+      <label for="ip">Base IP Address (e.g., 192.168.1.0)</label>
+      <input type="text" id="ip" placeholder="192.168.1.0" />
+
+      <label for="cidr">CIDR</label>
+      <select id="cidr">
+        <option value="">-- Select CIDR --</option>
+        <option value="0">/0</option>
+        <option value="1">/1</option>
+        <option value="2">/2</option>
+        <option value="3">/3</option>
+        <option value="4">/4</option>
+        <option value="5">/5</option>
+        <option value="6">/6</option>
+        <option value="7">/7</option>
+        <option value="8">/8</option>
+        <option value="9">/9</option>
+        <option value="10">/10</option>
+        <option value="11">/11</option>
+        <option value="12">/12</option>
+        <option value="13">/13</option>
+        <option value="14">/14</option>
+        <option value="15">/15</option>
+        <option value="16">/16</option>
+        <option value="17">/17</option>
+        <option value="18">/18</option>
+        <option value="19">/19</option>
+        <option value="20">/20</option>
+        <option value="21">/21</option>
+        <option value="22">/22</option>
+        <option value="23">/23</option>
+        <option value="24">/24</option>
+        <option value="25">/25</option>
+        <option value="26">/26</option>
+        <option value="27">/27</option>
+        <option value="28">/28</option>
+        <option value="29">/29</option>
+        <option value="30">/30</option>
+        <option value="31">/31</option>
+        <option value="32">/32</option>
+      </select>
+
+      <label for="mode">Split Mode</label>
+      <select id="mode" onchange="toggleMode()">
+        <option value="subnet">By Number of Subnets</option>
+        <option value="host">By Number of Hosts per Subnet</option>
+      </select>
+
+      <div id="subnetInput">
+        <label for="subnetCount">Number of Subnets</label>
+        <input type="number" id="subnetCount" min="1" />
+      </div>
+
+      <div id="hostInput" style="display: none">
+        <label for="hostCount">Minimum Hosts per Subnet</label>
+        <input type="number" id="hostCount" min="1" />
+      </div>
+
+      <button onclick="splitSubnets()">Split Network</button>
+      <button id="exportBtn" onclick="exportCSV()" style="display: none">
+        Export CSV
+      </button>
+
+      <table id="subnetTable" style="display: none">
+        <thead>
+          <tr>
+            <th>Subnet #</th>
+            <th>Network</th>
+            <th>Subnet Mask</th>
+            <th>First Host</th>
+            <th>Last Host</th>
+            <th>Broadcast</th>
+            <th>Usable Hosts</th>
+          </tr>
+        </thead>
+        <tbody id="tableBody"></tbody>
+      </table>
+    </div>
+
+    <script>
+      const modeSelect = document.getElementById("mode");
+      let rows = [];
+
+      function toggleMode() {
+        const mode = modeSelect.value;
+        document.getElementById("subnetInput").style.display =
+          mode === "subnet" ? "block" : "none";
+        document.getElementById("hostInput").style.display =
+          mode === "host" ? "block" : "none";
+      }
+
+      function ipToInt(ip) {
+        return (
+          ip
+            .split(".")
+            .reduce((acc, octet) => (acc << 8) + parseInt(octet), 0) >>> 0
+        );
+      }
+
+      function intToIp(int) {
+        return [
+          int >>> 24,
+          (int >>> 16) & 255,
+          (int >>> 8) & 255,
+          int & 255,
+        ].join(".");
+      }
+
+      function cidrToMask(cidr) {
+        return intToIp((~0 << (32 - cidr)) >>> 0);
+      }
+
+      function splitSubnets() {
+        const ip = document.getElementById("ip").value.trim();
+        const baseCidr = parseInt(document.getElementById("cidr").value);
+        const mode = modeSelect.value;
+        const baseIpInt = ipToInt(ip);
+        const totalIPs = Math.pow(2, 32 - baseCidr);
+
+        let subnetSize, newCidr, subnetCount;
+
+        if (!ip || isNaN(baseCidr)) {
+          alert("Enter a valid IP and CIDR.");
+          return;
+        }
+
+        if (mode === "subnet") {
+          subnetCount = parseInt(document.getElementById("subnetCount").value);
+          if (isNaN(subnetCount) || subnetCount < 1) {
+            alert("Enter valid number of subnets.");
+            return;
+          }
+          subnetSize = Math.floor(totalIPs / subnetCount);
+          newCidr = 32 - Math.floor(Math.log2(subnetSize));
+        } else {
+          const hostCount = parseInt(
+            document.getElementById("hostCount").value
+          );
+          if (isNaN(hostCount) || hostCount < 1) {
+            alert("Enter valid number of hosts.");
+            return;
+          }
+          for (let i = 32; i >= baseCidr; i--) {
+            let usable = Math.pow(2, 32 - i) - 2;
+            if (usable >= hostCount) {
+              newCidr = i;
+              subnetSize = Math.pow(2, 32 - newCidr);
+              break;
+            }
+          }
+          subnetCount = Math.floor(totalIPs / subnetSize);
+          if (!newCidr || subnetCount === 0) {
+            alert("CIDR too small for given host count.");
+            return;
+          }
+        }
+
+        rows = [];
+        const tableBody = document.getElementById("tableBody");
+        tableBody.innerHTML = "";
+
+        for (let i = 0; i < subnetCount; i++) {
+          const subnetStart = baseIpInt + i * subnetSize;
+          const broadcast = subnetStart + subnetSize - 1;
+          const firstHost = subnetSize > 2 ? subnetStart + 1 : subnetStart;
+          const lastHost = subnetSize > 2 ? broadcast - 1 : broadcast;
+          const usableHosts =
+            subnetSize > 2 ? subnetSize - 2 : subnetSize === 2 ? 2 : 1;
+
+          const row = {
+            subnet: i + 1,
+            network: intToIp(subnetStart),
+            mask: cidrToMask(newCidr),
+            first: intToIp(firstHost),
+            last: intToIp(lastHost),
+            broadcast: intToIp(broadcast),
+            hosts: usableHosts,
+          };
+
+          rows.push(row);
+          tableBody.innerHTML += `
+          <tr>
+            <td>${row.subnet}</td>
+            <td>${row.network}</td>
+            <td>${row.mask}</td>
+            <td>${row.first}</td>
+            <td>${row.last}</td>
+            <td>${row.broadcast}</td>
+            <td>${row.hosts}</td>
+          </tr>
+        `;
+        }
+
+        document.getElementById("subnetTable").style.display = "table";
+        document.getElementById("exportBtn").style.display = "block";
+      }
+
+      function exportCSV() {
+        const csvRows = [
+          [
+            "Subnet #",
+            "Network",
+            "Subnet Mask",
+            "First Host",
+            "Last Host",
+            "Broadcast",
+            "Usable Hosts",
+          ],
+          ...rows.map((r) => [
+            r.subnet,
+            r.network,
+            r.mask,
+            r.first,
+            r.last,
+            r.broadcast,
+            r.hosts,
+          ]),
+        ];
+        const csvContent = csvRows.map((e) => e.join(",")).join("\n");
+        const blob = new Blob([csvContent], { type: "text/csv" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "subnets.csv";
+        a.click();
+        URL.revokeObjectURL(url);
+      }
+
+      // PWA Service Worker
+      if ("serviceWorker" in navigator) {
+        navigator.serviceWorker
+          .register("service-worker.js")
+          .then(() => console.log("✅ Service Worker Registered"))
+          .catch((err) => console.error("❌ SW registration failed:", err));
+      }
+    </script>
+  </body>
+</html>
